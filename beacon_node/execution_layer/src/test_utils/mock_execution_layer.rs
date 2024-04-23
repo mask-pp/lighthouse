@@ -2,14 +2,12 @@ use crate::{
     test_utils::{
         MockServer, DEFAULT_JWT_SECRET, DEFAULT_TERMINAL_BLOCK, DEFAULT_TERMINAL_DIFFICULTY,
     },
-    Config, *,
+    *,
 };
 use keccak_hash::H256;
 use kzg::Kzg;
-use sensitive_url::SensitiveUrl;
-use task_executor::TaskExecutor;
 use tempfile::NamedTempFile;
-use types::{Address, ChainSpec, Epoch, EthSpec, Hash256, MainnetEthSpec};
+use types::MainnetEthSpec;
 
 pub struct MockExecutionLayer<T: EthSpec> {
     pub server: MockServer<T>,
@@ -244,7 +242,7 @@ impl<T: EthSpec> MockExecutionLayer<T> {
         // TODO: again consider forks
         let status = self
             .el
-            .notify_new_payload(payload.try_into().unwrap())
+            .notify_new_payload(payload.to_ref().try_into().unwrap())
             .await
             .unwrap();
         assert_eq!(status, PayloadStatus::Valid);

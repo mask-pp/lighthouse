@@ -54,7 +54,8 @@ impl Operation {
 }
 
 #[derive(Debug)]
-struct Custom(String);
+// We don't use the string value directly, but it's used in the Debug impl which is required by `warp::reject::Reject`.
+struct Custom(#[allow(dead_code)] String);
 
 impl warp::reject::Reject for Custom {}
 
@@ -70,8 +71,6 @@ pub trait BidStuff<E: EthSpec> {
     fn set_withdrawals_root(&mut self, withdrawals_root: Hash256);
 
     fn sign_builder_message(&mut self, sk: &SecretKey, spec: &ChainSpec) -> Signature;
-
-    fn to_signed_bid(self, signature: Signature) -> SignedBuilderBid<E>;
 }
 
 impl<E: EthSpec> BidStuff<E> for BuilderBid<E> {
@@ -181,13 +180,6 @@ impl<E: EthSpec> BidStuff<E> for BuilderBid<E> {
         let domain = spec.get_builder_domain();
         let message = self.signing_root(domain);
         sk.sign(message)
-    }
-
-    fn to_signed_bid(self, signature: Signature) -> SignedBuilderBid<E> {
-        SignedBuilderBid {
-            message: self,
-            signature,
-        }
     }
 }
 

@@ -248,6 +248,7 @@ impl ApiTester {
         let log = null_logger().unwrap();
 
         let ApiServer {
+            ctx: _,
             server,
             listening_socket,
             network_rx,
@@ -341,6 +342,7 @@ impl ApiTester {
         let log = null_logger().unwrap();
 
         let ApiServer {
+            ctx: _,
             server,
             listening_socket,
             network_rx,
@@ -1715,7 +1717,7 @@ impl ApiTester {
         };
 
         let expected = block.slot();
-        assert_eq!(result.header.beacon.slot, expected);
+        assert_eq!(result.get_slot(), expected);
 
         self
     }
@@ -1731,7 +1733,10 @@ impl ApiTester {
             Err(e) => panic!("query failed incorrectly: {e:?}"),
         };
 
-        let expected = self.chain.latest_seen_optimistic_update.lock().clone();
+        let expected = self
+            .chain
+            .light_client_server_cache
+            .get_latest_optimistic_update();
         assert_eq!(result, expected);
 
         self
@@ -1747,7 +1752,10 @@ impl ApiTester {
             Err(e) => panic!("query failed incorrectly: {e:?}"),
         };
 
-        let expected = self.chain.latest_seen_finality_update.lock().clone();
+        let expected = self
+            .chain
+            .light_client_server_cache
+            .get_latest_finality_update();
         assert_eq!(result, expected);
 
         self
@@ -2713,6 +2721,31 @@ impl ApiTester {
         self
     }
 
+    /// Check that the metadata from the headers & JSON response body are consistent, and that the
+    /// consensus block value is non-zero.
+    fn check_block_v3_metadata(
+        metadata: &ProduceBlockV3Metadata,
+        response: &JsonProduceBlockV3Response<E>,
+    ) {
+        // Compare fork name to ForkVersionedResponse rather than metadata consensus_version, which
+        // is deserialized to a dummy value.
+        assert_eq!(Some(metadata.consensus_version), response.version);
+        assert_eq!(ForkName::Base, response.metadata.consensus_version);
+        assert_eq!(
+            metadata.execution_payload_blinded,
+            response.metadata.execution_payload_blinded
+        );
+        assert_eq!(
+            metadata.execution_payload_value,
+            response.metadata.execution_payload_value
+        );
+        assert_eq!(
+            metadata.consensus_block_value,
+            response.metadata.consensus_block_value
+        );
+        assert!(!metadata.consensus_block_value.is_zero());
+    }
+
     pub async fn test_block_production_v3_ssz(self) -> Self {
         let fork = self.chain.canonical_head.cached_head().head_fork();
         let genesis_validators_root = self.chain.genesis_validators_root;
@@ -3574,11 +3607,12 @@ impl ApiTester {
 
         let (proposer_index, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         let payload: BlindedPayload<E> = match payload_type.data {
             ProduceBlockV3Response::Blinded(payload) => {
@@ -3600,11 +3634,12 @@ impl ApiTester {
 
         let (proposer_index, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, Some(0))
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         let payload: FullPayload<E> = match payload_type.data {
             ProduceBlockV3Response::Full(payload) => {
@@ -3626,11 +3661,12 @@ impl ApiTester {
 
         let (proposer_index, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, Some(u64::MAX))
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         let payload: BlindedPayload<E> = match payload_type.data {
             ProduceBlockV3Response::Blinded(payload) => {
@@ -3730,11 +3766,12 @@ impl ApiTester {
 
         let (proposer_index, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         let payload: BlindedPayload<E> = match payload_type.data {
             ProduceBlockV3Response::Blinded(payload) => {
@@ -3806,11 +3843,12 @@ impl ApiTester {
 
         let (_, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         let payload: BlindedPayload<E> = match payload_type.data {
             ProduceBlockV3Response::Blinded(payload) => {
@@ -3896,11 +3934,12 @@ impl ApiTester {
 
         let (_, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         let payload: FullPayload<E> = match payload_type.data {
             ProduceBlockV3Response::Full(payload) => {
@@ -3982,11 +4021,12 @@ impl ApiTester {
             .unwrap();
         let (_, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         let payload: FullPayload<E> = match payload_type.data {
             ProduceBlockV3Response::Full(payload) => {
@@ -4068,11 +4108,12 @@ impl ApiTester {
 
         let (_, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         let payload: FullPayload<E> = match payload_type.data {
             ProduceBlockV3Response::Full(payload) => {
@@ -4152,11 +4193,12 @@ impl ApiTester {
 
         let (_, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         let payload: FullPayload<E> = match payload_type.data {
             ProduceBlockV3Response::Full(payload) => {
@@ -4208,11 +4250,12 @@ impl ApiTester {
 
         let (_, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         match payload_type.data {
             ProduceBlockV3Response::Full(_) => (),
@@ -4274,11 +4317,12 @@ impl ApiTester {
 
         let (_, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         match payload_type.data {
             ProduceBlockV3Response::Full(_) => (),
@@ -4382,11 +4426,12 @@ impl ApiTester {
             .get_test_randao(next_slot, next_slot.epoch(E::slots_per_epoch()))
             .await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(next_slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         match payload_type.data {
             ProduceBlockV3Response::Blinded(_) => (),
@@ -4402,11 +4447,12 @@ impl ApiTester {
             .get_test_randao(next_slot, next_slot.epoch(E::slots_per_epoch()))
             .await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(next_slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         match payload_type.data {
             ProduceBlockV3Response::Full(_) => (),
@@ -4530,11 +4576,12 @@ impl ApiTester {
             .get_test_randao(next_slot, next_slot.epoch(E::slots_per_epoch()))
             .await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(next_slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         match payload_type.data {
             ProduceBlockV3Response::Full(_) => (),
@@ -4560,11 +4607,12 @@ impl ApiTester {
             .get_test_randao(next_slot, next_slot.epoch(E::slots_per_epoch()))
             .await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(next_slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         match payload_type.data {
             ProduceBlockV3Response::Blinded(_) => (),
@@ -4640,11 +4688,12 @@ impl ApiTester {
 
         let (proposer_index, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         let payload: FullPayload<E> = match payload_type.data {
             ProduceBlockV3Response::Full(payload) => {
@@ -4709,11 +4758,12 @@ impl ApiTester {
 
         let (_, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         match payload_type.data {
             ProduceBlockV3Response::Blinded(_) => (),
@@ -4773,11 +4823,12 @@ impl ApiTester {
 
         let (_, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         match payload_type.data {
             ProduceBlockV3Response::Full(_) => (),
@@ -4837,11 +4888,12 @@ impl ApiTester {
 
         let (_, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         match payload_type.data {
             ProduceBlockV3Response::Full(_) => (),
@@ -4899,11 +4951,12 @@ impl ApiTester {
         let epoch = self.chain.epoch().unwrap();
         let (_, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         let _block_contents = match payload_type.data {
             ProduceBlockV3Response::Blinded(payload) => payload,
@@ -4971,11 +5024,12 @@ impl ApiTester {
         let epoch = self.chain.epoch().unwrap();
         let (_, randao_reveal) = self.get_test_randao(slot, epoch).await;
 
-        let (payload_type, _) = self
+        let (payload_type, metadata) = self
             .client
             .get_validator_blocks_v3::<E>(slot, &randao_reveal, None, None)
             .await
             .unwrap();
+        Self::check_block_v3_metadata(&metadata, &payload_type);
 
         match payload_type.data {
             ProduceBlockV3Response::Full(_) => (),
@@ -5053,26 +5107,6 @@ impl ApiTester {
             .unwrap();
 
         assert!(deposits.data.is_empty());
-
-        self
-    }
-
-    pub async fn test_get_lighthouse_beacon_states_ssz(self) -> Self {
-        for state_id in self.interesting_state_ids() {
-            let result = self
-                .client
-                .get_lighthouse_beacon_states_ssz(&state_id.0, &self.chain.spec)
-                .await
-                .unwrap();
-
-            let mut expected = state_id
-                .state(&self.chain)
-                .ok()
-                .map(|(state, _execution_optimistic, _finalized)| state);
-            expected.as_mut().map(|state| state.drop_all_caches());
-
-            assert_eq!(result, expected, "{:?}", state_id);
-        }
 
         self
     }
@@ -6372,8 +6406,6 @@ async fn lighthouse_endpoints() {
         .test_get_lighthouse_eth1_block_cache()
         .await
         .test_get_lighthouse_eth1_deposit_cache()
-        .await
-        .test_get_lighthouse_beacon_states_ssz()
         .await
         .test_get_lighthouse_staking()
         .await

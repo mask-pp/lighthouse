@@ -190,7 +190,7 @@ pub enum BlockError<T: EthSpec> {
     /// ## Peer scoring
     ///
     /// The block is valid and we have already imported a block with this hash.
-    BlockIsAlreadyKnown,
+    BlockIsAlreadyKnown(Hash256),
     /// The block slot exceeds the MAXIMUM_BLOCK_SLOT_NUMBER.
     ///
     /// ## Peer scoring
@@ -764,6 +764,7 @@ pub trait IntoExecutionPendingBlock<T: BeaconChainTypes>: Sized {
     ) -> Result<ExecutionPendingBlock<T>, BlockSlashInfo<BlockError<T::EthSpec>>>;
 
     fn block(&self) -> &SignedBeaconBlock<T::EthSpec>;
+    fn block_cloned(&self) -> Arc<SignedBeaconBlock<T::EthSpec>>;
 }
 
 impl<T: BeaconChainTypes> GossipVerifiedBlock<T> {
@@ -831,7 +832,7 @@ impl<T: BeaconChainTypes> GossipVerifiedBlock<T> {
         // already know this block.
         let fork_choice_read_lock = chain.canonical_head.fork_choice_read_lock();
         if fork_choice_read_lock.contains_block(&block_root) {
-            return Err(BlockError::BlockIsAlreadyKnown);
+            return Err(BlockError::BlockIsAlreadyKnown(block_root));
         }
 
         // Do not process a block that doesn't descend from the finalized root.
@@ -965,7 +966,7 @@ impl<T: BeaconChainTypes> GossipVerifiedBlock<T> {
             SeenBlock::Slashable => {
                 return Err(BlockError::Slashable);
             }
-            SeenBlock::Duplicate => return Err(BlockError::BlockIsAlreadyKnown),
+            SeenBlock::Duplicate => return Err(BlockError::BlockIsAlreadyKnown(block_root)),
             SeenBlock::UniqueNonSlashable => {}
         };
 
@@ -1016,6 +1017,10 @@ impl<T: BeaconChainTypes> IntoExecutionPendingBlock<T> for GossipVerifiedBlock<T
 
     fn block(&self) -> &SignedBeaconBlock<T::EthSpec> {
         self.block.as_block()
+    }
+
+    fn block_cloned(&self) -> Arc<SignedBeaconBlock<T::EthSpec>> {
+        self.block.clone()
     }
 }
 
@@ -1168,6 +1173,10 @@ impl<T: BeaconChainTypes> IntoExecutionPendingBlock<T> for SignatureVerifiedBloc
     fn block(&self) -> &SignedBeaconBlock<T::EthSpec> {
         self.block.as_block()
     }
+
+    fn block_cloned(&self) -> Arc<SignedBeaconBlock<T::EthSpec>> {
+        self.block.block_cloned()
+    }
 }
 
 impl<T: BeaconChainTypes> IntoExecutionPendingBlock<T> for Arc<SignedBeaconBlock<T::EthSpec>> {
@@ -1198,6 +1207,10 @@ impl<T: BeaconChainTypes> IntoExecutionPendingBlock<T> for Arc<SignedBeaconBlock
     fn block(&self) -> &SignedBeaconBlock<T::EthSpec> {
         self
     }
+
+    fn block_cloned(&self) -> Arc<SignedBeaconBlock<T::EthSpec>> {
+        self.clone()
+    }
 }
 
 impl<T: BeaconChainTypes> IntoExecutionPendingBlock<T> for RpcBlock<T::EthSpec> {
@@ -1227,6 +1240,10 @@ impl<T: BeaconChainTypes> IntoExecutionPendingBlock<T> for RpcBlock<T::EthSpec> 
 
     fn block(&self) -> &SignedBeaconBlock<T::EthSpec> {
         self.as_block()
+    }
+
+    fn block_cloned(&self) -> Arc<SignedBeaconBlock<T::EthSpec>> {
+        self.block_cloned()
     }
 }
 
@@ -1767,7 +1784,7 @@ pub fn check_block_relevancy<T: BeaconChainTypes>(
         .fork_choice_read_lock()
         .contains_block(&block_root)
     {
-        return Err(BlockError::BlockIsAlreadyKnown);
+        return Err(BlockError::BlockIsAlreadyKnown(block_root));
     }
 
     Ok(block_root)

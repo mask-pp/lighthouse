@@ -1,6 +1,6 @@
 use crate::types::{GossipEncoding, GossipKind, GossipTopic};
 use crate::{error, TopicHash};
-use libp2p::gossipsub::{
+use gossipsub::{
     Config as GossipsubConfig, IdentTopic as Topic, PeerScoreParams, PeerScoreThresholds,
     TopicScoreParams,
 };
